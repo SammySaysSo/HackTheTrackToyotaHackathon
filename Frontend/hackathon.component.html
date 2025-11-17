@@ -1,0 +1,352 @@
+<div class="container">
+    <!-- Global Loading Overlay -->
+    <div class="loading-overlay" *ngIf="isLoading">
+        <div class="spinner"></div>
+        <p>Loading...</p>
+    </div>
+
+  <h2>🏁 Race Predictor</h2>
+
+  <!-- Horizontal Control Bar -->
+  <div class="form-row">
+    <div class="form-group">
+        <label>Track</label>
+        <select [(ngModel)]="selectedTrack" (change)="onTrackChange()">
+        <option value="" disabled selected>Select Track</option>
+        <option *ngFor="let t of tracks" [value]="t">{{ t }}</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Race Session</label>
+        <select [(ngModel)]="selectedSession" (change)="onSessionChange()">
+        <option value="" disabled selected>Select Session</option>
+        <option *ngFor="let s of raceSessions" [value]="s">{{ s }}</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Vehicle ID</label>
+        <select [(ngModel)]="selectedVehicle" (change)="onVehicleChange()">
+        <option value="" disabled selected>{{helpingUserOutVehicle}}</option>
+        <option *ngFor="let v of vehicles" [value]="v">{{ v }}</option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Starting Lap</label>
+        <select [(ngModel)]="startingLap">
+            <option value="" disabled selected>Select Lap</option>
+            <option *ngFor="let lap of howManyStartingLaps.lap_numbers" [value]="lap">
+                {{ lap }}
+            </option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>How Many Laps to Predict</label>
+        <select [(ngModel)]="stintLength">
+        <option value="" disabled selected>Select Length</option>
+        <option *ngFor="let i of [].constructor(20); let n = index" [value]="n + 1">
+            {{ n + 1 }}
+        </option>
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label>Pit Stop?</label>
+        <select [(ngModel)]="isPitStop">
+        <option [ngValue]="false">False</option>
+        <option [ngValue]="true">True</option>
+        </select>
+    </div>
+
+    <!-- <div *ngIf="currentAnalytics" class="analytics-box">
+        <p>Track Analytics of Predictor Model: R² = {{ currentAnalytics.r2 | number:'1.2-2' }} - RMSE = {{ currentAnalytics.rmse | number:'1.2-2' }} sec</p>
+    </div> -->
+
+    <button id="predictButton" (click)="runDefault()" [disabled]="isLoading">
+      {{ isLoading ? 'Predicting...' : 'Predict' }}
+    </button>
+  </div>
+
+  <div class="track-image-container" *ngIf="currentTrackImage">
+    <div class="track-image-wrapper">
+        <img [src]="currentTrackImage" [alt]="selectedTrack + ' Track Layout'" class="track-image" />
+        <div class="track-overlay">
+            <h3 class="overlay-title">{{ selectedTrack }}</h3>
+            <p class="overlay-sub" *ngIf="currentAnalytics">
+                Track Length = {{ currentAnalytics.trackLength | number:'1.3-3' }} miles
+            </p>
+            <p class="overlay-sub" *ngIf="currentAnalytics">
+                Avg Pit Stop Time = {{ currentAnalytics.avgPitStopTime | number:'1.0-0' }} seconds
+            </p>
+        </div>
+    </div>
+    <!-- optional additional info can stay here -->
+  </div>
+
+  <!-- Mode Buttons -->
+  <div class="mode-buttons">
+    <button (click)="runPreEvent()">Pre-Event</button>
+    <button (click)="runRealTime()">Real-Time</button>
+    <button (click)="runPostEvent()">Post-Event</button>
+    <button (click)="runTrueEvent()">Race Results</button>
+    <button (click)="openNewSession()" class="btn">New Race Session</button>
+  </div>
+
+  <p *ngIf="errorMessage" class="error">{{ errorMessage }}</p>
+
+  <div *ngIf="stintResults && !isLoading">
+    <div *ngIf="activeMode != 'pre' && activeMode != 'real' && activeMode != 'post' && activeMode != 'newSession' && activeMode != 'trueEvent'" class="results-section"> 
+            <div *ngIf="stintResults.predicted_lap_times.length > 0" class="results"> 
+                <h3>Predicted Lap Times</h3> 
+                <table> 
+                    <tr> 
+                        <th>Lap #</th> 
+                        <th>Predicted Time (s)</th> 
+                    </tr> 
+                    <tr *ngFor="let time of stintResults.predicted_lap_times; let i = index"> 
+                        <td>{{ +this.startingLapSelected! + i }}</td> 
+                        <td>{{ time | number: '1.2-2' }}</td> 
+                    </tr> 
+                </table> 
+            </div> 
+        </div>
+    </div>
+
+  <!-- Pre-Event Mode -->
+   <div *ngIf="stintResults && !isLoading">
+        <div *ngIf="activeMode === 'pre' && stintResults.predicted_lap_times.length">
+            <h3>Pre-Event Prediction Results</h3>
+            <table>
+            <tr>
+                <th>Lap #</th>
+                <th>Predicted</th>
+                <th>True Time</th>
+                <th>Abs Error</th>
+                <th>% Error</th>
+            </tr>
+            <tr *ngFor="let p of stintResults.predicted_lap_times; let i = index">
+                <td>{{ +this.startingLapSelected! + i }}</td>
+                <td>{{ isValidLapTime(p) ? (p | number: '1.2-2') : 'N/A' }}</td>
+                <td>{{ isValidLapTime(stintResults.true_lap_times[i]) ? (stintResults.true_lap_times[i] | number: '1.2-2') : 'N/A' }}</td>
+                <td>{{ isValidLapTime(p) && isValidLapTime(stintResults.true_lap_times[i]) ? 
+                    (Math.abs(p - stintResults.true_lap_times[i]) | number: '1.2-2') : 'N/A' }}</td>
+                <td>{{ isValidLapTime(p) && isValidLapTime(stintResults.true_lap_times[i]) ? 
+                    (100 * Math.abs(p - stintResults.true_lap_times[i]) / stintResults.true_lap_times[i] | number: '1.1-1') + '%' : 'N/A' }}</td>
+            </tr>
+            </table>
+            <canvas id="preChart"></canvas>
+    </div>
+   </div>
+
+  <!-- Real-Time Mode -->
+   <div *ngIf="stintResults && !isLoading">
+    <div *ngIf="activeMode === 'real' && realTimeResults">
+        <h3>Real-Time Comparison</h3>
+        <table>
+        <tr><th>Lap</th><th>No Pit</th><th>Pit Stop</th></tr>
+        <tr *ngFor="let np of realTimeResults.noPit.predicted_lap_times; let i = index">
+            <td>{{ +this.startingLapSelected! + i }}</td>
+            <td>{{ np | number: '1.2-2' }}</td>
+            <td>{{ realTimeResults.pit.predicted_lap_times[i] | number: '1.2-2' }}</td>
+        </tr>
+        </table>
+        <canvas id="realChart"></canvas>
+    </div>
+  </div>
+
+  <!-- Post-Event Mode -->
+    <div *ngIf="activeMode === 'post' && postEventResults" class="post-summary">
+        <h3>📊 Post-Event Summary</h3>
+        <div class="summary-grid">
+            <div><b>Session MAE:</b> {{ postEventResults.mae | number:'1.2-2' }} s</div>
+            <div><b>Model R²:</b> {{ postEventResults.model_r2 | number:'1.3-3' }}%</div>
+            <div><b>Session RMSE:</b> {{ postEventResults.rmse | number:'1.2-2' }} s</div>
+            <div><b>Model RMSE:</b> {{ postEventResults.model_rmse | number:'1.2-2' }} s</div>
+        </div>
+
+        <div class="badge" [ngClass]="{
+            'good': postEventResults.performanceStatus === 'above average',
+            'neutral': postEventResults.performanceStatus === 'on par',
+            'bad': postEventResults.performanceStatus === 'below average'
+            }">
+            Performance: {{ postEventResults.performanceStatus | titlecase }}
+        </div>
+
+        <div class="insight-box">
+            <h4>💡 Insight</h4>
+            <p>{{ postEventResults.insight }}</p>
+        </div>
+    </div>
+
+   <div *ngIf="stintResults && !isLoading">
+    <div *ngIf="activeMode === 'post' && postEventResults">
+        <h3>Post-Event Analysis</h3>
+        <!-- <p><strong>MAE:</strong> {{ postEventResults.mae | number:'1.2-2' }} s | 
+        <strong>RMSE:</strong> {{ postEventResults.rmse | number:'1.2-2' }} s</p> -->
+
+        <table>
+        <tr><th>Lap</th><th>True Time</th><th>Predicted Time</th><th>Abs Error</th><th>% Error</th></tr>
+        <tr *ngFor="let t of postEventResults.actual; let i = index">
+            <td>{{ +this.startingLapSelected! + i }}</td>
+            <td>{{ isValidLapTime(postEventResults.actual[i]) ? (postEventResults.actual[i] | number:'1.2-2') : 'N/A' }}</td>
+            <td>{{ isValidLapTime(postEventResults.predicted[i]) ? (postEventResults.predicted[i] | number:'1.2-2') : 'N/A' }}</td>
+            <td>{{ isValidLapTime(postEventResults.predicted[i]) && isValidLapTime(postEventResults.actual[i]) ? 
+                (Math.abs(postEventResults.predicted[i] - postEventResults.actual[i]) | number:'1.2-2') : 'N/A' }}</td>
+            <td>{{ isValidLapTime(postEventResults.predicted[i]) && isValidLapTime(postEventResults.actual[i]) ? 
+                (100 * Math.abs(postEventResults.predicted[i] - postEventResults.actual[i]) / postEventResults.actual[i] | number:'1.1-1') + '%' : 'N/A' }}</td>
+        </tr>
+        </table>
+
+        <canvas id="postChart"></canvas>
+    </div>
+    </div>
+
+    <!-- FINAL RACE RESULTS -->
+    <div *ngIf="activeMode === 'trueEvent' && postEventResults" class="results-section">
+
+        <h3>🏆 Final Race Results</h3>
+
+        <!-- HEADER DETAILS -->
+        <div class="final-header-box">
+            <p><b>Track:</b> {{ postEventResults.track_name }}</p>
+            <p><b>Race Session:</b> {{ postEventResults.race_session }}</p>
+            <p><b>Max Laps:</b> {{ postEventResults.max_lap }}</p>
+            <label><b>Min Lap Time (seconds):</b></label>
+            <select [(ngModel)]="selectedMinLapTime"
+                    (change)="runTrueEvent()"
+                    class="min-lap-select">
+                <option *ngFor="let t of minLapOptions" [value]="t">
+                    {{ t }}
+                </option>
+            </select>
+        </div>
+
+        <!-- RESULTS TABLE -->
+        <table class="results-table">
+            <thead>
+            <tr>
+                <th>Vehicle ID</th>
+                <th>Completed Laps</th>
+                <th>Best Lap Time (s)</th>
+                <th>Total Time (s)</th>
+                <th>Invalid Laps</th>
+                <th>Status</th>
+            </tr>
+            </thead>
+
+            <tbody>
+            <tr *ngFor="let r of postEventResults.results">
+                <td>{{ r.vehicle_id }}</td>
+                <td>{{ r.completed_laps }}</td>
+                <td>{{ r.best_lap_time }}</td>
+                <td>{{ r.total_time | number:'1.2-2' }}</td>
+                <td>{{ r.invalid_laps.length > 0 ? r.invalid_laps.join(', ') : 'None' }}</td>
+                <td>{{ r.status }}</td>
+            </tr>
+            </tbody>
+        </table>
+
+    </div>
+
+    <!-- New Race Session panel (simple collapsible) -->
+    <div *ngIf="newSessionOpen" class="new-session-panel">
+        <h3>New Race Session</h3>
+
+        <div class="form-row-compact">
+            <div class="form-compact-item">
+                <label>Track*</label>
+                <select [(ngModel)]="newSessionForm.track_name">
+                    <option *ngFor="let t of tracks" [value]="t">{{ t }}</option>
+                </select>
+            </div>
+
+            <!-- <label>Race Session</label>
+            <select [(ngModel)]="newSessionForm.race_session">
+            <option value="R1">R1</option>
+            <option value="R2">R2</option>
+            </select> -->
+
+            <div class="form-compact-item">
+                <label>Vehicle ID*</label>
+                <input [(ngModel)]="newSessionForm.vehicle_id" placeholder="e.g. NEW-CAR-001" />
+            </div>
+
+            <div class="form-compact-item">
+                <label>Total Laps to Predict*</label>
+                <input type="number" [(ngModel)]="newSessionForm.total_laps_to_predict" min="1" />
+            </div>
+        </div>
+
+        <p>* = Required</p>
+
+        <div class="prev-laps">
+            <h4 *ngIf="newSessionForm && newSessionForm.previous_laps && newSessionForm.previous_laps.length > 0">Previous Laps </h4>
+            <div *ngFor="let p of newSessionForm.previous_laps; let i = index" class="prev-lap-row">
+
+                <div class="prev-lap-item">
+                    <label>Lap #*</label>
+                    <input type="number" [(ngModel)]="p.lap" min="1"/>
+                </div>
+
+                <div class="prev-lap-item">
+                    <label>Lap Time (s)*</label>
+                    <input type="number" [(ngModel)]="p.lap_time_seconds" min="1"/>
+                </div>
+
+                <div class="prev-lap-item">
+                    <label>Laps on tires</label>
+                    <input type="number" [(ngModel)]="p.laps_on_tires"/>
+                </div>
+
+                <div class="prev-lap-item">
+                    <label>Fuel Load Proxy</label>
+                    <input type="number" [(ngModel)]="p.fuel_load_proxy"/>
+                </div>
+
+                <div class="prev-lap-item">
+                    <label>Air Temp</label>
+                    <input type="number" [(ngModel)]="p.session_air_temp"/>
+                </div>
+
+                <div class="prev-lap-item">
+                    <label>Track Temp</label>
+                    <input type="number" [(ngModel)]="p.session_track_temp"/>
+                </div>
+
+                <button type="button" class="removeButton" (click)="removePrevLapRow(i)">Remove</button>
+
+            </div>
+            <button type="button" (click)="addPrevLapRow()">Add Previous Lap (optional)</button>
+        </div>
+
+        <div class="new-session-actions">
+        <button (click)="predictNewSession()" [disabled]="isLoading">Predict New Race</button>
+        <button (click)="newSessionOpen=false">Close</button>
+        </div>
+
+        <!-- show a compact result summary -->
+        <div *ngIf="newSessionResult" class="new-session-results">
+            <h4>Prediction Result</h4>
+            <p><b>Track:</b> {{ newSessionResult.track_name }}</p>
+            <p><b>Vehicle:</b> {{ newSessionResult.vehicle_id }}</p>
+            <p><b>Start Lap Predicted From:</b> {{ newSessionResult.start_lap_predicted_from }}</p>
+            <p><b>Total Predicted Time:</b> {{ newSessionResult.total_predicted_time | number:'1.2-2' }} s</p>
+            <p><b>Best Lap:</b> {{ newSessionResult.best_lap_time | number:'1.2-2' }} s</p>
+
+            <table class="pred-table">
+            <thead><tr><th>Lap</th><th>Time (s)</th><th>Provided?</th></tr></thead>
+            <tbody>
+                <tr *ngFor="let r of newSessionResult.predicted_laps">
+                <td>{{ r.lap }}</td>
+                <td>{{ r.lap_time_seconds | number:'1.2-2' }}</td>
+                <td>{{ r.provided ? 'Yes' : 'Predicted' }}</td>
+                </tr>
+            </tbody>
+            </table>
+        </div>
+    </div>
+
+</div>
